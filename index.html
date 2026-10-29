@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HAMAC SERVICES – Comptes clients</title>
+<meta name="theme-color" content="#0e3b5a">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="favicon.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{--bleu:#1f9ad6;--marine:#0e3b5a;--vert:#0b9444;--rouge:#e3202b;--orange:#f26522;--jaune:#fcd116;--fond:#f3f8fb;--texte:#16303f;--ligne:#d5e4ec}
+*{box-sizing:border-box}
+body{margin:0;font-family:"Trebuchet MS","Segoe UI",sans-serif;background:var(--fond);color:var(--texte);display:flex;min-height:100vh}
+body::before{content:"";position:fixed;inset:0;background:url(logo.png) center/min(75vmin,560px) no-repeat;opacity:.07;pointer-events:none;z-index:0}
+aside,main{position:relative;z-index:1}
+aside{width:220px;background:var(--marine);color:#fff;padding:16px 12px;position:sticky;top:0;height:100vh;overflow:auto;flex-shrink:0}
+aside img{width:110px;display:block;margin:0 auto 6px;background:#fff;border-radius:50%}
+aside h1{font-size:15px;text-align:center;margin:0 0 14px}
+aside button{display:block;width:100%;text-align:left;background:none;border:0;color:#cfe6f3;padding:10px 12px;border-radius:8px;font:inherit;cursor:pointer;border-left:4px solid transparent}
+aside button:hover,aside button.on{background:#17506f;color:#fff}
+aside button.on{border-left-color:var(--jaune)}
+main{flex:1;padding:20px;min-width:0}
+h2{margin:0 0 12px;font-size:22px;color:var(--marine)}
+.top{display:flex;gap:4px 18px;flex-wrap:wrap;font-size:14px;margin-bottom:10px}.top a{color:var(--marine)}
+.bandeau{height:5px;background:linear-gradient(90deg,var(--rouge) 33%,var(--jaune) 33% 66%,var(--vert) 66%);border-radius:3px;margin-bottom:16px}
+.grille{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:16px}
+.kpi{background:#ffffffee;border:1px solid var(--ligne);border-top:4px solid var(--bleu);border-radius:8px;padding:12px 14px}
+.kpi small{color:#5b7482}.kpi b{display:block;font-size:20px;margin-top:4px}
+.kpi.v{border-top-color:var(--vert)}.kpi.o{border-top-color:var(--orange)}.kpi.r{border-top-color:var(--rouge)}
+.btn{background:var(--vert);color:#fff;border:0;padding:10px 16px;border-radius:8px;font:inherit;cursor:pointer}
+.btn.s{background:#fff;color:var(--marine);border:1px solid var(--bleu)}
+.btn.r{background:var(--rouge)}.btn.b{background:var(--bleu)}
+.btn:focus-visible,aside button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--jaune);outline-offset:1px}
+.x{background:none;border:0;color:var(--rouge);cursor:pointer;font-size:16px;padding:4px 8px}
+.tab{overflow-x:auto;background:#ffffffe6;border:1px solid var(--ligne);border-radius:8px;margin-top:12px}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th{background:var(--marine);color:#fff;text-align:left;padding:9px 10px;white-space:nowrap}
+td{padding:8px 10px;border-bottom:1px solid var(--ligne)}
+td.n{text-align:right;white-space:nowrap}
+.vide{padding:22px;text-align:center;color:#5b7482}
+.modal{position:fixed;inset:0;background:#0e3b5acc;display:flex;align-items:center;justify-content:center;padding:14px;z-index:5}
+.modal form{background:#fff;border-radius:10px;padding:20px;width:min(420px,100%);max-height:92vh;overflow:auto;border-top:6px solid var(--bleu)}
+.modal form.g{width:min(480px,100%)}
+.modal canvas{width:100%;border:1px solid var(--ligne);border-radius:6px}
+label{display:block;margin:10px 0 4px;font-size:14px}
+input,select{width:100%;padding:10px;border:1px solid var(--ligne);border-radius:6px;font:inherit}
+.rang{display:flex;gap:8px;margin-top:16px;justify-content:flex-end;flex-wrap:wrap}
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.act{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.pf{background:#ffffffee;border:1px solid var(--ligne);border-radius:8px;padding:16px;max-width:520px;margin-bottom:16px}
+@media(max-width:760px){body{flex-direction:column}aside{width:100%;height:auto;position:static;display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:8px}aside img{width:48px;margin:0}aside h1{display:none}aside button{width:auto;padding:8px 10px;border-left:0;font-size:14px}main{padding:12px}}
+</style>
+</head>
+<body>
+<aside><img src="logo.png" alt="Logo HAMAC SERVICES"><h1>HAMAC SERVICES</h1><nav id="nav"></nav></aside>
+<main><div class="top" id="top"></div><div class="bandeau"></div><div id="vue"></div></main>
+<div id="m" hidden></div>
+<script>
+const CLE='hamac_services_db_v1',TAB=['clients','cotis','retraits','journal'];
+let db={};try{db=JSON.parse(localStorage.getItem(CLE))||{}}catch(e){db={}}
+TAB.forEach(t=>db[t]=db[t]||[]);
+db.cpt=db.cpt||{};db.cpt.V=db.cpt.V||db.cpt.P||0;db.cpt.R=db.cpt.R||0;
+db.params={nom:'HAMAC SERVICES',resp:'Morikè Kourouma',tel:'622717745',email:'morikekourouma29@gmail.com',adresse:'',msg:'Merci pour votre confiance',pin:'',...(db.params||{})};
+const $=i=>document.getElementById(i),P=()=>db.params;
+const sauve=()=>{try{localStorage.setItem(CLE,JSON.stringify(db))}catch(e){alert("Enregistrement impossible dans ce navigateur. Faites une sauvegarde JSON.")}};
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+const auj=()=>new Date().toISOString().slice(0,10);
+const fd=d=>(d||'').split('-').reverse().join('/');
+const gnf=n=>(Number(n)||0).toLocaleString('fr-FR')+' GNF';
+const som=(a,k)=>a.reduce((s,x)=>s+(Number(x[k])||0),0);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const cl=id=>db.clients.find(c=>c.id===id),nomC=id=>(cl(id)||{}).nom||'—';
+const solde=c=>som(db.cotis.filter(x=>x.client===c),'montant')-som(db.retraits.filter(x=>x.client===c),'montant');
+const ops=()=>[...db.cotis.map(x=>({...x,k:'cotis'})),...db.retraits.map(x=>({...x,k:'retraits'}))];
+const tri=(a,b)=>(b.date||'').localeCompare(a.date||'')||(b.num||'').localeCompare(a.num||'');
+const lib=k=>k==='cotis'?'Versement':'Retrait';
+const wa=t=>{let n=(t||'').replace(/\D/g,'');if(n.length===9)n='224'+n;return n};
+const log=t=>db.journal.push({id:uid(),iso:new Date().toISOString(),ts:new Date().toLocaleString('fr-FR'),texte:t});
+const NAV=[['dash','Tableau de bord'],['clients','Clients'],['cotis','Versements'],['retraits','Retraits'],['recus','Reçus'],['caisse','Caisse'],['suivi','Suivi des clients'],['rap','Rapports'],['journal','Journal'],['params','Paramètres']];
+let cur='dash',fil={a:'',b:''},dip=null;
+const fenetre=h=>{const m=$('m');m.className='modal';m.hidden=false;m.innerHTML=h;return m};
+const ferme=()=>{const m=$('m');m.hidden=true;m.innerHTML=''};
+
+function rendu(){
+ $('nav').innerHTML=NAV.map(([k,l])=>`<button data-k="${k}" class="${k===cur?'on':''}">${l}</button>`).join('');
+ $('top').innerHTML=`<b>${esc(P().nom)}</b><span>${esc(P().resp)}</span><a href="tel:${esc(P().tel)}">${esc(P().tel)}</a><a href="mailto:${esc(P().email)}">${esc(P().email)}</a>`;
+ const V={dash,clients:lcl,cotis:()=>lop('cotis'),retraits:()=>lop('retraits'),recus,caisse,suivi,rap,journal:jour,params:pagePar};
+ $('vue').innerHTML=V[cur]();
+ if(cur==='caisse')$('ff').onclick=()=>{fil.a=$('fa').value;fil.b=$('fb').value;rendu()};
+ if(cur==='params')liePar();
+ scrollTo(0,0)}
+
+function dash(){
+ const m=auj().slice(0,7),mo=a=>som(db[a].filter(x=>(x.date||'').startsWith(m)),'montant');
+ return `<h2>Tableau de bord</h2>
+ <div class="act"><button class="btn b" data-add="clients">Ajouter un client</button><button class="btn" data-add="cotis">Effectuer un versement</button><button class="btn r" data-add="retraits">Effectuer un retrait</button></div>
+ <div class="grille"><div class="kpi v"><small>Solde de la caisse</small><b>${gnf(som(db.cotis,'montant')-som(db.retraits,'montant'))}</b></div>
+ <div class="kpi v"><small>Versements du mois</small><b>${gnf(mo('cotis'))}</b></div>
+ <div class="kpi r"><small>Retraits du mois</small><b>${gnf(mo('retraits'))}</b></div>
+ <div class="kpi"><small>Clients</small><b>${db.clients.length}</b></div></div>`}
+
+const tabl=(h,rows,vide)=>`<div class="tab">${rows.length?`<table><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr>${rows.join('')}</table>`:`<div class="vide">${vide}</div>`}</div>`;
+const bRecu=(k,id)=>`<button class="btn s" data-recu="${k}|${id}">Reçu</button>`;
+const bDel=(k,id,c)=>`<button class="x" data-del="${k}|${id}|${c||''}" aria-label="Supprimer">✕</button>`;
+
+function lcl(){
+ const r=db.clients.slice().sort((a,b)=>a.nom.localeCompare(b.nom)).map(c=>`<tr><td>${esc(c.nom)}</td><td>${esc(c.tel)}</td><td>${esc(c.quartier)}</td><td class="n"><b>${gnf(solde(c.id))}</b></td><td><button class="btn s" data-det="${c.id}">Détail</button></td><td>${bDel('clients',c.id)}</td></tr>`);
+ return `<h2>Clients</h2><div class="bar"><button class="btn b" data-add="clients">Ajouter un client</button><span>${db.clients.length} client(s)</span></div>${tabl(['Nom','Téléphone','Quartier','Solde','',''],r,'Aucun client. Cliquez sur « Ajouter un client ».')}`}
+
+function lop(k){
+ const r=db[k].slice().sort(tri).map(x=>`<tr><td>${esc(x.num)}</td><td>${fd(x.date)}</td><td>${esc(nomC(x.client))}</td><td class="n">${gnf(x.montant)}</td><td>${esc(k==='cotis'?x.mode:x.motif)}</td><td>${bRecu(k,x.id)}</td><td>${bDel(k,x.id)}</td></tr>`);
+ return `<h2>${lib(k)}s</h2><div class="bar"><button class="btn ${k==='cotis'?'':'r'}" data-add="${k}">Effectuer un ${lib(k).toLowerCase()}</button><span>Total : <b>${gnf(som(db[k],'montant'))}</b></span></div>${tabl(['N° reçu','Date','Client','Montant',k==='cotis'?'Mode':'Motif','',''],r,'Aucune opération pour le moment.')}`}
+
+function recus(){
+ const r=ops().sort(tri).map(x=>`<tr><td>${esc(x.num)}</td><td>${fd(x.date)}</td><td>${lib(x.k)}</td><td>${esc(nomC(x.client))}</td><td class="n">${gnf(x.montant)}</td><td><button class="btn s" data-recu="${x.k}|${x.id}">Ouvrir</button></td><td>${bDel(x.k,x.id)}</td></tr>`);
+ return `<h2>Reçus</h2><p>Un reçu est créé à chaque versement et à chaque retrait. Ouvrez-le pour le télécharger en image ou l'envoyer par WhatsApp.</p>${tabl(['N°','Date','Type','Client','Montant','',''],r,'Aucun reçu pour le moment.')}`}
+
+function caisse(){
+ const r=ops().sort((a,b)=>-tri(a,b));let s=0;r.forEach(x=>{s+=x.k==='cotis'?x.montant:-x.montant;x.cum=s});
+ const v=r.filter(x=>(!fil.a||x.date>=fil.a)&&(!fil.b||x.date<=fil.b)).reverse();
+ const e=som(v.filter(x=>x.k==='cotis'),'montant'),o=som(v.filter(x=>x.k==='retraits'),'montant');
+ return `<h2>Situation de la caisse</h2><p>La caisse est automatique : un versement est une entrée, un retrait est une sortie.</p>
+ <div class="grille"><div class="kpi v"><small>Solde actuel</small><b>${gnf(s)}</b></div><div class="kpi v"><small>Entrées (période)</small><b>${gnf(e)}</b></div><div class="kpi r"><small>Sorties (période)</small><b>${gnf(o)}</b></div><div class="kpi"><small>Solde de la période</small><b>${gnf(e-o)}</b></div></div>
+ <div class="bar"><label style="margin:0">Du <input type="date" id="fa" value="${fil.a}" style="width:auto"></label><label style="margin:0">Au <input type="date" id="fb" value="${fil.b}" style="width:auto"></label><button class="btn s" id="ff">Filtrer</button></div>
+ ${tabl(['Date','N° reçu','Opération','Client','Entrée','Sortie','Solde caisse'],v.map(x=>`<tr><td>${fd(x.date)}</td><td>${esc(x.num)}</td><td>${lib(x.k)}</td><td>${esc(nomC(x.client))}</td><td class="n">${x.k==='cotis'?gnf(x.montant):''}</td><td class="n">${x.k==='retraits'?gnf(x.montant):''}</td><td class="n"><b>${gnf(x.cum)}</b></td></tr>`),'Aucun mouvement sur cette période.')}`}
+
+function suivi(){
+ const r=db.clients.slice().sort((a,b)=>a.nom.localeCompare(b.nom)).map(c=>{const v=db.cotis.filter(x=>x.client===c.id),w=db.retraits.filter(x=>x.client===c.id),d=ops().filter(x=>x.client===c.id).map(x=>x.date).sort().pop();
+  return `<tr><td>${esc(c.nom)}</td><td>${esc(c.tel)}</td><td class="n">${v.length}</td><td class="n">${gnf(som(v,'montant'))}</td><td class="n">${gnf(som(w,'montant'))}</td><td class="n"><b>${gnf(solde(c.id))}</b></td><td>${fd(d)||'—'}</td><td><button class="btn s" data-det="${c.id}">Détail</button></td></tr>`});
+ return `<h2>Suivi des clients</h2>${tabl(['Client','Téléphone','Versements','Total versé','Total retiré','Solde','Dernière opération',''],r,'Aucun client pour le moment.')}`}
+
+function detail(id){
+ const c=cl(id);if(!c)return;
+ const r=ops().filter(x=>x.client===id).sort(tri).map(x=>`<tr><td>${fd(x.date)}</td><td>${lib(x.k)}</td><td class="n">${gnf(x.montant)}</td><td>${bRecu(x.k,x.id)}</td><td>${bDel(x.k,x.id,id)}</td></tr>`);
+ fenetre(`<form class="g"><h2>${esc(c.nom)}</h2><p>${esc(c.tel||'')} ${esc(c.quartier||'')}<br>Solde : <b>${gnf(solde(id))}</b></p>${tabl(['Date','Opération','Montant','',''],r,'Aucune opération.')}<div class="rang"><button type="button" class="btn s" data-fm="1">Fermer</button></div></form>`)}
+
+function rap(){
+ const mois={};ops().forEach(x=>{if(!x.date)return;const m=x.date.slice(0,7);mois[m]=mois[m]||{v:0,w:0};mois[m][x.k==='cotis'?'v':'w']+=Number(x.montant)||0});
+ const ms=Object.keys(mois).sort().reverse();
+ const top=db.clients.slice().sort((a,b)=>solde(b.id)-solde(a.id)).slice(0,10);
+ return `<h2>Rapports</h2><h3>Par mois</h3>${tabl(['Mois','Versements','Retraits','Solde du mois'],ms.map(m=>`<tr><td>${m}</td><td class="n">${gnf(mois[m].v)}</td><td class="n">${gnf(mois[m].w)}</td><td class="n"><b>${gnf(mois[m].v-mois[m].w)}</b></td></tr>`),'Aucune donnée pour le moment.')}
+ <h3>Clients avec les plus gros soldes</h3>${tabl(['Client','Solde'],top.map(c=>`<tr><td>${esc(c.nom)}</td><td class="n"><b>${gnf(solde(c.id))}</b></td></tr>`),'Aucun client.')}
+ <p><button class="btn s" onclick="window.print()">Imprimer le rapport</button></p>`}
+
+function jour(){
+ const r=db.journal.slice().sort((a,b)=>b.iso.localeCompare(a.iso)).map(x=>`<tr><td style="white-space:nowrap">${esc(x.ts)}</td><td>${esc(x.texte)}</td><td><button class="x" data-jdel="${x.id}" aria-label="Supprimer cette ligne">✕</button></td></tr>`);
+ return `<h2>Journal</h2><p>Toutes les opérations sont inscrites ici automatiquement. Supprimer une ligne du journal ne supprime pas l'opération elle-même.</p>
+ <div class="bar"><label style="margin:0">Supprimer <select id="js" style="width:auto"><option value="">— Choisir —</option><option value="30">Les lignes de plus de 30 jours</option><option value="90">Les lignes de plus de 90 jours</option><option value="all">Tout le journal</option></select></label><button class="btn r" data-act="jdel">Appliquer</button></div>${tabl(['Date et heure','Opération',''],r,'Aucune opération enregistrée.')}`}
+
+function pagePar(){
+ const f=(n,l,t='text')=>`<label>${l}<input name="${n}" type="${t}" value="${esc(P()[n])}"></label>`;
+ return `<h2>Paramètres</h2><form class="pf" id="fp"><h3>Informations de l'entreprise</h3><p>Elles apparaissent en haut de l'application et sur les reçus.</p>
+ ${f('nom','Nom de l\'entreprise')}${f('resp','Nom du responsable')}${f('tel','Téléphone','tel')}${f('email','E-mail','email')}${f('adresse','Adresse')}${f('msg','Message en bas du reçu')}
+ <label>Code d'accès (facultatif)<input name="pin" type="password" inputmode="numeric" value="${esc(P().pin)}" placeholder="Laisser vide pour ne pas en avoir"></label>
+ <div class="rang"><button class="btn">Enregistrer</button></div></form>
+ <div class="pf"><h3>Données</h3><div class="act"><button class="btn s" data-act="x">Exporter vers Excel</button><button class="btn s" data-act="s">Sauvegarder (JSON)</button><button class="btn s" data-act="r">Restaurer une sauvegarde</button></div>
+ <p>Les données restent sur ce téléphone. Faites une sauvegarde chaque semaine et gardez le fichier en lieu sûr.</p></div>
+ <div class="pf"><h3>Installer sur le téléphone</h3><button class="btn b" id="bI" data-act="i" ${dip?'':'hidden'}>Installer l'application</button>
+ <p>Android (Chrome) : menu ⋮ puis « Ajouter à l'écran d'accueil » ou « Installer l'application ». iPhone (Safari) : bouton Partager puis « Sur l'écran d'accueil ».</p></div>`}
+function liePar(){$('fp').onsubmit=e=>{e.preventDefault();new FormData(e.target).forEach((v,n)=>P()[n]=v.trim());log('Paramètres modifiés');sauve();rendu();alert('Paramètres enregistrés.')}}
+
+function form(k){
+ if(k!=='clients'&&!db.clients.length){alert("Ajoutez d'abord un client.");return}
+ const sel=`<label>Client<select name="client" required><option value="">— Choisir —</option>${db.clients.slice().sort((a,b)=>a.nom.localeCompare(b.nom)).map(c=>`<option value="${c.id}">${esc(c.nom)}</option>`).join('')}</select></label>`;
+ const dt=`<label>Date<input name="date" type="date" value="${auj()}" required></label>`,mt=`<label>Montant (GNF)<input name="montant" type="number" min="1" step="any" required></label>`;
+ const F={clients:`<label>Nom complet<input name="nom" required></label><label>Téléphone (WhatsApp)<input name="tel" type="tel"></label><label>Quartier / ville<input name="quartier"></label>`,
+  cotis:dt+sel+mt+`<label>Mode de versement<select name="mode"><option>Espèces</option><option>Mobile money</option><option>Autre</option></select></label>`,
+  retraits:dt+sel+`<p id="sd"></p>`+mt+`<label>Motif<input name="motif"></label>`};
+ const T={clients:'Ajouter un client',cotis:'Effectuer un versement',retraits:'Effectuer un retrait'};
+ const m=fenetre(`<form id="ff2"><h2>${T[k]}</h2>${F[k]}<div class="rang"><button type="button" class="btn s" data-fm="1">Annuler</button><button class="btn">Enregistrer</button></div></form>`);
+ const sc=m.querySelector('[name=client]');
+ if(k==='retraits')sc.onchange=()=>$('sd').innerHTML=sc.value?`Solde disponible : <b>${gnf(solde(sc.value))}</b>`:'';
+ m.querySelector('input,select').focus();
+ $('ff2').onsubmit=e=>{e.preventDefault();
+  const r={id:uid()};new FormData(e.target).forEach((v,n)=>r[n]=n==='montant'?Number(v):v.trim());
+  if(k==='clients'){db.clients.push(r);log('Nouveau client : '+r.nom)}
+  else{
+   if(!(r.montant>0)){alert('Entrez un montant supérieur à 0.');return}
+   if(k==='retraits'&&r.montant>solde(r.client)){alert('Retrait refusé : le solde disponible est de '+gnf(solde(r.client))+'.');return}
+   const p=k==='cotis'?'V':'R';db.cpt[p]++;r.num=p+'-'+String(db.cpt[p]).padStart(4,'0');
+   db[k].push(r);log(`${lib(k)} de ${gnf(r.montant)} – ${nomC(r.client)} – reçu ${r.num}`)}
+  sauve();ferme();rendu();if(k!=='clients')recu(k,r.id)}}
+
+function supprime(k,id,c){
+ if(k==='clients'){const n=ops().filter(x=>x.client===id).length;if(!confirm('Supprimer ce client'+(n?' et ses '+n+' opération(s)':'')+' ?'))return;
+  const nm=nomC(id);db.cotis=db.cotis.filter(x=>x.client!==id);db.retraits=db.retraits.filter(x=>x.client!==id);db.clients=db.clients.filter(x=>x.id!==id);log('Client supprimé : '+nm)}
+ else{const x=db[k].find(q=>q.id===id);if(!x||!confirm('Supprimer ce '+lib(k).toLowerCase()+' '+x.num+' ?'))return;db[k]=db[k].filter(q=>q.id!==id);log(`${lib(k)} supprimé : ${x.num} – ${gnf(x.montant)} – ${nomC(x.client)}`)}
+ sauve();ferme();rendu();if(c)detail(c)}
+
+const LOGO=new Image();LOGO.src='logo.png';
+const logoOk=()=>LOGO.complete&&LOGO.naturalWidth?LOGO:null;
+function dessin(k,r,logo){
+ const c=document.createElement('canvas');c.width=600;c.height=880;const x=c.getContext('2d'),F='Trebuchet MS,Segoe UI,sans-serif',pay=k==='cotis',col=pay?'#0b9444':'#e3202b',p=P();
+ const t=(s,px,y,al,f,fill)=>{x.font=f;x.fillStyle=fill;x.textAlign=al;x.fillText(s,px,y)};
+ x.fillStyle='#fff';x.fillRect(0,0,600,880);
+ if(logo){const h=Math.round(420*logo.naturalHeight/logo.naturalWidth);x.globalAlpha=.08;x.drawImage(logo,90,300,420,h);x.globalAlpha=1;x.drawImage(logo,230,34,140,Math.round(140*logo.naturalHeight/logo.naturalWidth))}
+ ['#e3202b','#fcd116','#0b9444'].forEach((cl,i)=>{x.fillStyle=cl;x.fillRect(i*200,0,200,16);x.fillRect(i*200,864,200,16)});
+ t(p.nom.toUpperCase(),300,212,'center','bold 28px '+F,'#0e3b5a');
+ t(pay?'REÇU DE VERSEMENT':'REÇU DE RETRAIT',300,246,'center','bold 20px '+F,col);
+ [['N° du reçu',r.num],['Date',fd(r.date)],['Client',nomC(r.client)],[pay?'Mode de versement':'Motif',(pay?r.mode:r.motif)||'—']].forEach(([a,b],i)=>{const y=300+i*44;t(a,40,y,'left','16px '+F,'#5b7482');t(String(b),560,y,'right','bold 17px '+F,'#16303f');x.fillStyle='#d5e4ec';x.fillRect(40,y+12,520,1)});
+ x.fillStyle=col;x.fillRect(40,500,520,90);
+ t(pay?'Montant versé':'Montant retiré',300,532,'center','16px '+F,'#fff');t(gnf(r.montant),300,572,'center','bold 30px '+F,'#fff');
+ t('Solde du compte : '+gnf(solde(r.client)),300,634,'center','bold 16px '+F,'#16303f');
+ t('Signature / cachet',60,700,'left','14px '+F,'#5b7482');x.fillStyle='#16303f';x.fillRect(60,770,200,1);
+ [p.resp,'Tél. '+p.tel,p.email,p.adresse].filter(Boolean).forEach((s,i)=>t(s,560,700+i*24,'right',(i?'':'bold ')+'14px '+F,i?'#16303f':'#0e3b5a'));
+ t(p.msg,300,836,'center','italic 14px '+F,'#5b7482');return c}
+function blob(k,r,cb){try{dessin(k,r,logoOk()).toBlob(cb)}catch(e){dessin(k,r,null).toBlob(cb)}}
+function recu(k,id){
+ const r=db[k].find(x=>x.id===id);if(!r)return;
+ const m=fenetre(`<form class="g"><h2>Reçu ${esc(r.num)}</h2><div id="cv"></div><div class="rang"><button type="button" class="btn s" data-fm="1">Fermer</button><button type="button" class="btn s" id="dl">Télécharger l'image</button><button type="button" class="btn" id="sh">Envoyer par WhatsApp</button></div></form>`);
+ let cv;try{cv=dessin(k,r,logoOk())}catch(e){cv=dessin(k,r,null)}
+ $('cv').appendChild(cv);const nom='recu-'+r.num+'.png';
+ const tel=()=>blob(k,r,b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=nom;a.click()});
+ $('dl').onclick=tel;
+ $('sh').onclick=()=>blob(k,r,async b=>{const f=new File([b],nom,{type:'image/png'});
+  if(navigator.canShare&&navigator.canShare({files:[f]})){try{await navigator.share({files:[f],title:'Reçu '+r.num});return}catch(e){if(e.name==='AbortError')return}}
+  tel();window.open('https://wa.me/'+wa((cl(r.client)||{}).tel)+'?text='+encodeURIComponent('Bonjour, voici votre reçu '+r.num+' de '+P().nom+' ('+gnf(r.montant)+'). Image jointe.'),'_blank')})}
+
+function clic(e){
+ const d=e.target.dataset;
+ if(d.k){cur=d.k;rendu()}
+ if(d.add)form(d.add);
+ if(d.det)detail(d.det);
+ if(d.recu){const[k,id]=d.recu.split('|');recu(k,id)}
+ if(d.del){const[k,id,c]=d.del.split('|');supprime(k,id,c)}
+ if(d.fm)ferme();
+ if(d.jdel&&confirm('Supprimer cette ligne du journal ?')){db.journal=db.journal.filter(x=>x.id!==d.jdel);sauve();rendu()}
+ if(d.act==='jdel'){const v=$('js').value;if(!v){alert('Choisissez ce que vous voulez supprimer.');return}
+  const lim=Date.now()-Number(v)*864e5,del=db.journal.filter(x=>v==='all'||new Date(x.iso).getTime()<lim);
+  if(!del.length){alert('Aucune ligne concernée.');return}
+  if(!confirm('Supprimer '+del.length+' ligne(s) du journal ?'))return;
+  db.journal=db.journal.filter(x=>!del.includes(x));log('Journal nettoyé : '+del.length+' ligne(s) supprimée(s)');sauve();rendu()}
+ if(d.act==='x')exporte();
+ if(d.act==='s'){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(db)],{type:'application/json'}));a.download='HAMAC_sauvegarde_'+auj()+'.json';a.click()}
+ if(d.act==='r'){const i=document.createElement('input');i.type='file';i.accept='.json';i.onchange=()=>{const r=new FileReader();r.onload=()=>{try{const n=JSON.parse(r.result);if(confirm('Remplacer toutes les données actuelles par cette sauvegarde ?')){TAB.forEach(t=>db[t]=n[t]||[]);db.cpt={V:0,R:0,...(n.cpt||{})};db.params={...P(),...(n.params||{})};log('Restauration d’une sauvegarde');sauve();rendu()}}catch(x){alert('Fichier de sauvegarde invalide.')}};r.readAsText(i.files[0])};i.click()}
+ if(d.act==='i'&&dip){dip.prompt();dip=null;e.target.hidden=true}}
+function exporte(){
+ if(typeof XLSX==='undefined'){alert("L'export Excel demande une connexion internet. Utilisez la sauvegarde JSON.");return}
+ const wb=XLSX.utils.book_new(),add=(n,r)=>XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(r.length?r:[{}]),n);
+ add('Clients',db.clients.map(c=>({Nom:c.nom,Téléphone:c.tel,Quartier:c.quartier,Solde:solde(c.id)})));
+ add('Versements',db.cotis.map(x=>({'N° reçu':x.num,Date:fd(x.date),Client:nomC(x.client),Montant:x.montant,Mode:x.mode})));
+ add('Retraits',db.retraits.map(x=>({'N° reçu':x.num,Date:fd(x.date),Client:nomC(x.client),Montant:x.montant,Motif:x.motif})));
+ add('Journal',db.journal.map(x=>({'Date et heure':x.ts,Opération:x.texte})));
+ XLSX.writeFile(wb,'HAMAC_SERVICES_'+auj()+'.xlsx')}
+document.addEventListener('click',clic);
+addEventListener('beforeinstallprompt',e=>{e.preventDefault();dip=e;const b=$('bI');if(b)b.hidden=false});
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+rendu();
+if(P().pin){fenetre(`<form class="g"><h2>Code d'accès</h2><label>Code<input type="password" inputmode="numeric" id="pn"></label><div class="rang"><button class="btn">Ouvrir</button></div></form>`);$('pn').focus();$('m').querySelector('form').onsubmit=e=>{e.preventDefault();if($('pn').value===P().pin)ferme();else{alert('Code incorrect.');$('pn').value=''}}}
+</script>
+</body>
+</html>
