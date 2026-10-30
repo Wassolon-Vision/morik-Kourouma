@@ -9,6 +9,7 @@
 <link rel="icon" href="favicon.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="firebase-config.js"></script>
 <style>
 :root{--bleu:#1f9ad6;--marine:#0e3b5a;--vert:#0b9444;--rouge:#e3202b;--orange:#f26522;--jaune:#fcd116;--fond:#f3f8fb;--texte:#16303f;--ligne:#d5e4ec}
 *{box-sizing:border-box}
@@ -40,6 +41,7 @@ th{background:var(--marine);color:#fff;text-align:left;padding:9px 10px;white-sp
 td{padding:8px 10px;border-bottom:1px solid var(--ligne)}
 td.n{text-align:right;white-space:nowrap}
 .vide{padding:22px;text-align:center;color:#5b7482}
+[hidden]{display:none!important}
 .modal{position:fixed;inset:0;background:#0e3b5acc;display:flex;align-items:center;justify-content:center;padding:14px;z-index:5}
 .modal form{background:#fff;border-radius:10px;padding:20px;width:min(420px,100%);max-height:92vh;overflow:auto;border-top:6px solid var(--bleu)}
 .modal form.g{width:min(480px,100%)}
@@ -50,6 +52,7 @@ input,select{width:100%;padding:10px;border:1px solid var(--ligne);border-radius
 .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .act{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
 .pf{background:#ffffffee;border:1px solid var(--ligne);border-radius:8px;padding:16px;max-width:520px;margin-bottom:16px}
+body.v aside,body.v main{visibility:hidden}
 @media(max-width:760px){body{flex-direction:column}aside{width:100%;height:auto;position:static;display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:8px}aside img{width:48px;margin:0}aside h1{display:none}aside button{width:auto;padding:8px 10px;border-left:0;font-size:14px}main{padding:12px}}
 </style>
 </head>
@@ -62,7 +65,7 @@ const CLE='hamac_services_db_v1',TAB=['clients','cotis','retraits','journal'];
 let db={};try{db=JSON.parse(localStorage.getItem(CLE))||{}}catch(e){db={}}
 TAB.forEach(t=>db[t]=db[t]||[]);
 db.cpt=db.cpt||{};db.cpt.V=db.cpt.V||db.cpt.P||0;db.cpt.R=db.cpt.R||0;
-db.params={nom:'HAMAC SERVICES',resp:'Morikè Kourouma',tel:'622717745',email:'morikekourouma29@gmail.com',adresse:'',msg:'Merci pour votre confiance',pin:'',...(db.params||{})};
+db.params={nom:'HAMAC SERVICES',resp:'Morikè Kourouma',tel:'622717745',email:'morikekourouma29@gmail.com',adresse:'',msg:'Merci pour votre confiance',...(db.params||{})};delete db.params.pin;
 const $=i=>document.getElementById(i),P=()=>db.params;
 const sauve=()=>{try{localStorage.setItem(CLE,JSON.stringify(db))}catch(e){alert("Enregistrement impossible dans ce navigateur. Faites une sauvegarde JSON.")}};
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,5);
@@ -77,24 +80,30 @@ const ops=()=>[...db.cotis.map(x=>({...x,k:'cotis'})),...db.retraits.map(x=>({..
 const tri=(a,b)=>(b.date||'').localeCompare(a.date||'')||(b.num||'').localeCompare(a.num||'');
 const lib=k=>k==='cotis'?'Versement':'Retrait';
 const wa=t=>{let n=(t||'').replace(/\D/g,'');if(n.length===9)n='224'+n;return n};
-const log=t=>db.journal.push({id:uid(),iso:new Date().toISOString(),ts:new Date().toLocaleString('fr-FR'),texte:t});
+const log=t=>{const e={id:uid(),iso:new Date().toISOString(),ts:new Date().toLocaleString('fr-FR'),texte:t};db.journal.push(e);fbSet('journal',e)};
 const NAV=[['dash','Tableau de bord'],['clients','Clients'],['cotis','Versements'],['retraits','Retraits'],['recus','Reçus'],['caisse','Caisse'],['suivi','Suivi des clients'],['rap','Rapports'],['journal','Journal'],['params','Paramètres']];
-let cur='dash',fil={a:'',b:''},dip=null;
+let cur='dash',fil={a:'',b:''},dip=null,FS=null,U=null,AUTH=null,erFait=false;
+const EN_LIGNE=!!(window.FIREBASE_CONFIG&&window.FIREBASE_CONFIG.apiKey&&!/COLLEZ/.test(window.FIREBASE_CONFIG.apiKey));
+const statut=()=>!EN_LIGNE?'Mode local (non synchronisé)':!U?'Connexion…':navigator.onLine?'● En ligne (synchronisé)':'● Hors ligne : envoi au retour d’internet';
+const nett=o=>JSON.parse(JSON.stringify(o));
+const numero=p=>{const k=p==='V'?'cotis':'retraits',mx=Math.max(0,...db[k].map(x=>parseInt((x.num||'').slice(2),10)||0));db.cpt[p]=Math.max(db.cpt[p]||0,mx)+1;return p+'-'+String(db.cpt[p]).padStart(4,'0')};
 const fenetre=h=>{const m=$('m');m.className='modal';m.hidden=false;m.innerHTML=h;return m};
 const ferme=()=>{const m=$('m');m.hidden=true;m.innerHTML=''};
 
-function rendu(){
+function rendu(garde){
  $('nav').innerHTML=NAV.map(([k,l])=>`<button data-k="${k}" class="${k===cur?'on':''}">${l}</button>`).join('');
- $('top').innerHTML=`<b>${esc(P().nom)}</b><span>${esc(P().resp)}</span><a href="tel:${esc(P().tel)}">${esc(P().tel)}</a><a href="mailto:${esc(P().email)}">${esc(P().email)}</a>`;
+ $('top').innerHTML=`<b>${esc(P().nom)}</b><span>${esc(P().resp)}</span><a href="tel:${esc(P().tel)}">${esc(P().tel)}</a><a href="mailto:${esc(P().email)}">${esc(P().email)}</a><b>${statut()}</b>`;
  const V={dash,clients:lcl,cotis:()=>lop('cotis'),retraits:()=>lop('retraits'),recus,caisse,suivi,rap,journal:jour,params:pagePar};
  $('vue').innerHTML=V[cur]();
  if(cur==='caisse')$('ff').onclick=()=>{fil.a=$('fa').value;fil.b=$('fb').value;rendu()};
  if(cur==='params')liePar();
- scrollTo(0,0)}
+ if(!garde)scrollTo(0,0)}
 
 function dash(){
  const m=auj().slice(0,7),mo=a=>som(db[a].filter(x=>(x.date||'').startsWith(m)),'montant');
- return `<h2>Tableau de bord</h2>
+ const nb=db.clients.length+db.cotis.length+db.retraits.length,j=db.sauv?Math.floor((Date.now()-new Date(db.sauv))/864e5):null;
+ const al=nb&&(j===null||j>=7)?`<div class="kpi r" style="margin-bottom:16px"><b style="font-size:16px">⚠ ${j===null?'Aucune sauvegarde n’a encore été faite.':'Dernière sauvegarde il y a '+j+' jours.'}</b><div class="act" style="margin:10px 0 0"><button class="btn" data-act="s">Sauvegarder maintenant</button></div></div>`:'';
+ return `<h2>Tableau de bord</h2>${al}
  <div class="act"><button class="btn b" data-add="clients">Ajouter un client</button><button class="btn" data-add="cotis">Effectuer un versement</button><button class="btn r" data-add="retraits">Effectuer un retrait</button></div>
  <div class="grille"><div class="kpi v"><small>Solde de la caisse</small><b>${gnf(som(db.cotis,'montant')-som(db.retraits,'montant'))}</b></div>
  <div class="kpi v"><small>Versements du mois</small><b>${gnf(mo('cotis'))}</b></div>
@@ -103,19 +112,20 @@ function dash(){
 
 const tabl=(h,rows,vide)=>`<div class="tab">${rows.length?`<table><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr>${rows.join('')}</table>`:`<div class="vide">${vide}</div>`}</div>`;
 const bRecu=(k,id)=>`<button class="btn s" data-recu="${k}|${id}">Reçu</button>`;
+const bEdit=(k,id,c)=>`<button class="x" style="color:var(--bleu)" data-edit="${k}|${id}|${c||''}" aria-label="Modifier">✎</button>`;
 const bDel=(k,id,c)=>`<button class="x" data-del="${k}|${id}|${c||''}" aria-label="Supprimer">✕</button>`;
 
 function lcl(){
- const r=db.clients.slice().sort((a,b)=>a.nom.localeCompare(b.nom)).map(c=>`<tr><td>${esc(c.nom)}</td><td>${esc(c.tel)}</td><td>${esc(c.quartier)}</td><td class="n"><b>${gnf(solde(c.id))}</b></td><td><button class="btn s" data-det="${c.id}">Détail</button></td><td>${bDel('clients',c.id)}</td></tr>`);
- return `<h2>Clients</h2><div class="bar"><button class="btn b" data-add="clients">Ajouter un client</button><span>${db.clients.length} client(s)</span></div>${tabl(['Nom','Téléphone','Quartier','Solde','',''],r,'Aucun client. Cliquez sur « Ajouter un client ».')}`}
+ const r=db.clients.slice().sort((a,b)=>a.nom.localeCompare(b.nom)).map(c=>`<tr><td>${esc(c.nom)}</td><td>${esc(c.tel)}</td><td>${esc(c.quartier)}</td><td class="n"><b>${gnf(solde(c.id))}</b></td><td><button class="btn s" data-det="${c.id}">Détail</button></td><td>${bEdit('clients',c.id)}</td><td>${bDel('clients',c.id)}</td></tr>`);
+ return `<h2>Clients</h2><div class="bar"><button class="btn b" data-add="clients">Ajouter un client</button><span>${db.clients.length} client(s)</span></div>${tabl(['Nom','Téléphone','Quartier','Solde','','',''],r,'Aucun client. Cliquez sur « Ajouter un client ».')}`}
 
 function lop(k){
- const r=db[k].slice().sort(tri).map(x=>`<tr><td>${esc(x.num)}</td><td>${fd(x.date)}</td><td>${esc(nomC(x.client))}</td><td class="n">${gnf(x.montant)}</td><td>${esc(k==='cotis'?x.mode:x.motif)}</td><td>${bRecu(k,x.id)}</td><td>${bDel(k,x.id)}</td></tr>`);
- return `<h2>${lib(k)}s</h2><div class="bar"><button class="btn ${k==='cotis'?'':'r'}" data-add="${k}">Effectuer un ${lib(k).toLowerCase()}</button><span>Total : <b>${gnf(som(db[k],'montant'))}</b></span></div>${tabl(['N° reçu','Date','Client','Montant',k==='cotis'?'Mode':'Motif','',''],r,'Aucune opération pour le moment.')}`}
+ const r=db[k].slice().sort(tri).map(x=>`<tr><td>${esc(x.num)}</td><td>${fd(x.date)}</td><td>${esc(nomC(x.client))}</td><td class="n">${gnf(x.montant)}</td><td>${esc(k==='cotis'?x.mode:x.motif)}</td><td>${bRecu(k,x.id)}</td><td>${bEdit(k,x.id)}</td><td>${bDel(k,x.id)}</td></tr>`);
+ return `<h2>${lib(k)}s</h2><div class="bar"><button class="btn ${k==='cotis'?'':'r'}" data-add="${k}">Effectuer un ${lib(k).toLowerCase()}</button><span>Total : <b>${gnf(som(db[k],'montant'))}</b></span></div>${tabl(['N° reçu','Date','Client','Montant',k==='cotis'?'Mode':'Motif','','',''],r,'Aucune opération pour le moment.')}`}
 
 function recus(){
- const r=ops().sort(tri).map(x=>`<tr><td>${esc(x.num)}</td><td>${fd(x.date)}</td><td>${lib(x.k)}</td><td>${esc(nomC(x.client))}</td><td class="n">${gnf(x.montant)}</td><td><button class="btn s" data-recu="${x.k}|${x.id}">Ouvrir</button></td><td>${bDel(x.k,x.id)}</td></tr>`);
- return `<h2>Reçus</h2><p>Un reçu est créé à chaque versement et à chaque retrait. Ouvrez-le pour le télécharger en image ou l'envoyer par WhatsApp.</p>${tabl(['N°','Date','Type','Client','Montant','',''],r,'Aucun reçu pour le moment.')}`}
+ const r=ops().sort(tri).map(x=>`<tr><td>${esc(x.num)}</td><td>${fd(x.date)}</td><td>${lib(x.k)}</td><td>${esc(nomC(x.client))}</td><td class="n">${gnf(x.montant)}</td><td><button class="btn s" data-recu="${x.k}|${x.id}">Ouvrir</button></td><td>${bEdit(x.k,x.id)}</td><td>${bDel(x.k,x.id)}</td></tr>`);
+ return `<h2>Reçus</h2><p>Un reçu est créé à chaque versement et à chaque retrait. Ouvrez-le pour le télécharger en image ou l'envoyer par WhatsApp.</p>${tabl(['N°','Date','Type','Client','Montant','','',''],r,'Aucun reçu pour le moment.')}`}
 
 function caisse(){
  const r=ops().sort((a,b)=>-tri(a,b));let s=0;r.forEach(x=>{s+=x.k==='cotis'?x.montant:-x.montant;x.cum=s});
@@ -133,8 +143,8 @@ function suivi(){
 
 function detail(id){
  const c=cl(id);if(!c)return;
- const r=ops().filter(x=>x.client===id).sort(tri).map(x=>`<tr><td>${fd(x.date)}</td><td>${lib(x.k)}</td><td class="n">${gnf(x.montant)}</td><td>${bRecu(x.k,x.id)}</td><td>${bDel(x.k,x.id,id)}</td></tr>`);
- fenetre(`<form class="g"><h2>${esc(c.nom)}</h2><p>${esc(c.tel||'')} ${esc(c.quartier||'')}<br>Solde : <b>${gnf(solde(id))}</b></p>${tabl(['Date','Opération','Montant','',''],r,'Aucune opération.')}<div class="rang"><button type="button" class="btn s" data-fm="1">Fermer</button></div></form>`)}
+ const r=ops().filter(x=>x.client===id).sort(tri).map(x=>`<tr><td>${fd(x.date)}</td><td>${lib(x.k)}</td><td class="n">${gnf(x.montant)}</td><td>${bRecu(x.k,x.id)}</td><td>${bEdit(x.k,x.id,id)}</td><td>${bDel(x.k,x.id,id)}</td></tr>`);
+ fenetre(`<form class="g"><h2>${esc(c.nom)}</h2><p>${esc(c.tel||'')} ${esc(c.quartier||'')}<br>Solde : <b>${gnf(solde(id))}</b></p>${tabl(['Date','Opération','Montant','','',''],r,'Aucune opération.')}<div class="rang"><button type="button" class="btn s" data-fm="1">Fermer</button></div></form>`)}
 
 function rap(){
  const mois={};ops().forEach(x=>{if(!x.date)return;const m=x.date.slice(0,7);mois[m]=mois[m]||{v:0,w:0};mois[m][x.k==='cotis'?'v':'w']+=Number(x.montant)||0});
@@ -153,40 +163,45 @@ function pagePar(){
  const f=(n,l,t='text')=>`<label>${l}<input name="${n}" type="${t}" value="${esc(P()[n])}"></label>`;
  return `<h2>Paramètres</h2><form class="pf" id="fp"><h3>Informations de l'entreprise</h3><p>Elles apparaissent en haut de l'application et sur les reçus.</p>
  ${f('nom','Nom de l\'entreprise')}${f('resp','Nom du responsable')}${f('tel','Téléphone','tel')}${f('email','E-mail','email')}${f('adresse','Adresse')}${f('msg','Message en bas du reçu')}
- <label>Code d'accès (facultatif)<input name="pin" type="password" inputmode="numeric" value="${esc(P().pin)}" placeholder="Laisser vide pour ne pas en avoir"></label>
  <div class="rang"><button class="btn">Enregistrer</button></div></form>
+ <div class="pf"><h3>Base en ligne</h3><p><b>${statut()}</b>${AUTH&&AUTH.currentUser?'<br>Compte : '+esc(AUTH.currentUser.email):''}</p>${FS&&U?'<button class="btn s" data-act="fbout">Se déconnecter de ce téléphone</button>':EN_LIGNE?'':'<p>Pour activer la base en ligne, remplissez le fichier firebase-config.js (voir le guide).</p>'}</div>
+ <div class="pf"><h3>Sécurité</h3><button class="btn s" data-act="mdp">Changer le mot de passe</button><p>Le mot de passe est demandé à chaque ouverture, et de nouveau après 5 minutes d'absence.</p></div>
  <div class="pf"><h3>Données</h3><div class="act"><button class="btn s" data-act="x">Exporter vers Excel</button><button class="btn s" data-act="s">Sauvegarder (JSON)</button><button class="btn s" data-act="r">Restaurer une sauvegarde</button></div>
- <p>Les données restent sur ce téléphone. Faites une sauvegarde chaque semaine et gardez le fichier en lieu sûr.</p></div>
+ <p>Les données restent sur ce téléphone. Faites une sauvegarde chaque semaine : choisissez WhatsApp, Google Drive ou e-mail pour garder le fichier en lieu sûr.</p></div>
  <div class="pf"><h3>Installer sur le téléphone</h3><button class="btn b" id="bI" data-act="i" ${dip?'':'hidden'}>Installer l'application</button>
  <p>Android (Chrome) : menu ⋮ puis « Ajouter à l'écran d'accueil » ou « Installer l'application ». iPhone (Safari) : bouton Partager puis « Sur l'écran d'accueil ».</p></div>`}
-function liePar(){$('fp').onsubmit=e=>{e.preventDefault();new FormData(e.target).forEach((v,n)=>P()[n]=v.trim());log('Paramètres modifiés');sauve();rendu();alert('Paramètres enregistrés.')}}
+function liePar(){$('fp').onsubmit=e=>{e.preventDefault();new FormData(e.target).forEach((v,n)=>P()[n]=v.trim());log('Paramètres modifiés');fbMeta('params',P());sauve();rendu();alert('Paramètres enregistrés.')}}
 
-function form(k){
+function form(k,editId,back){
  if(k!=='clients'&&!db.clients.length){alert("Ajoutez d'abord un client.");return}
+ const r0=editId?db[k].find(x=>x.id===editId):null;if(editId&&!r0)return;
  const sel=`<label>Client<select name="client" required><option value="">— Choisir —</option>${db.clients.slice().sort((a,b)=>a.nom.localeCompare(b.nom)).map(c=>`<option value="${c.id}">${esc(c.nom)}</option>`).join('')}</select></label>`;
  const dt=`<label>Date<input name="date" type="date" value="${auj()}" required></label>`,mt=`<label>Montant (GNF)<input name="montant" type="number" min="1" step="any" required></label>`;
  const F={clients:`<label>Nom complet<input name="nom" required></label><label>Téléphone (WhatsApp)<input name="tel" type="tel"></label><label>Quartier / ville<input name="quartier"></label>`,
   cotis:dt+sel+mt+`<label>Mode de versement<select name="mode"><option>Espèces</option><option>Mobile money</option><option>Autre</option></select></label>`,
   retraits:dt+sel+`<p id="sd"></p>`+mt+`<label>Motif<input name="motif"></label>`};
- const T={clients:'Ajouter un client',cotis:'Effectuer un versement',retraits:'Effectuer un retrait'};
- const m=fenetre(`<form id="ff2"><h2>${T[k]}</h2>${F[k]}<div class="rang"><button type="button" class="btn s" data-fm="1">Annuler</button><button class="btn">Enregistrer</button></div></form>`);
+ const T={clients:'Ajouter un client',cotis:'Effectuer un versement',retraits:'Effectuer un retrait'},TE={clients:'Modifier le client',cotis:'Modifier le versement',retraits:'Modifier le retrait'};
+ const m=fenetre(`<form id="ff2"><h2>${r0?TE[k]:T[k]}</h2>${F[k]}<div class="rang"><button type="button" class="btn s" data-fm="1">Annuler</button><button class="btn">Enregistrer</button></div></form>`);
+ if(r0)m.querySelectorAll('[name]').forEach(el=>{if(r0[el.name]!=null)el.value=r0[el.name]});
  const sc=m.querySelector('[name=client]');
- if(k==='retraits')sc.onchange=()=>$('sd').innerHTML=sc.value?`Solde disponible : <b>${gnf(solde(sc.value))}</b>`:'';
+ if(k==='retraits'){const maj=()=>$('sd').innerHTML=sc.value?`Solde disponible : <b>${gnf(solde(sc.value)+(r0&&r0.client===sc.value?r0.montant:0))}</b>`:'';sc.onchange=maj;maj()}
  m.querySelector('input,select').focus();
  $('ff2').onsubmit=e=>{e.preventDefault();
-  const r={id:uid()};new FormData(e.target).forEach((v,n)=>r[n]=n==='montant'?Number(v):v.trim());
-  if(k==='clients'){db.clients.push(r);log('Nouveau client : '+r.nom)}
+  const r=r0?{...r0}:{id:uid()};new FormData(e.target).forEach((v,n)=>r[n]=n==='montant'?Number(v):v.trim());
+  if(k==='clients'){db.clients=r0?db.clients.map(x=>x.id===r.id?r:x):[...db.clients,r];log((r0?'Client modifié : ':'Nouveau client : ')+r.nom)}
   else{
    if(!(r.montant>0)){alert('Entrez un montant supérieur à 0.');return}
-   if(k==='retraits'&&r.montant>solde(r.client)){alert('Retrait refusé : le solde disponible est de '+gnf(solde(r.client))+'.');return}
-   const p=k==='cotis'?'V':'R';db.cpt[p]++;r.num=p+'-'+String(db.cpt[p]).padStart(4,'0');
-   db[k].push(r);log(`${lib(k)} de ${gnf(r.montant)} – ${nomC(r.client)} – reçu ${r.num}`)}
-  sauve();ferme();rendu();if(k!=='clients')recu(k,r.id)}}
+   const av=db[k];db[k]=r0?av.map(x=>x.id===r.id?r:x):[...av,r];
+   if(solde(r.client)<0||(r0&&solde(r0.client)<0)){db[k]=av;alert('Opération refusée : le solde du client deviendrait négatif.'+(r0?'':' Solde disponible : '+gnf(solde(r.client))+'.'));return}
+   if(!r0){const p=k==='cotis'?'V':'R';r.num=numero(p);fbMeta('cpt',{[p]:db.cpt[p]})}
+   log(`${r0?'Modification – ':''}${lib(k)} de ${gnf(r.montant)} – ${nomC(r.client)} – reçu ${r.num}`)}
+  fbSet(k,r);sauve();ferme();rendu();
+  if(!r0&&k!=='clients')recu(k,r.id);else if(back)detail(back)}}
 
 function supprime(k,id,c){
  if(k==='clients'){const n=ops().filter(x=>x.client===id).length;if(!confirm('Supprimer ce client'+(n?' et ses '+n+' opération(s)':'')+' ?'))return;
-  const nm=nomC(id);db.cotis=db.cotis.filter(x=>x.client!==id);db.retraits=db.retraits.filter(x=>x.client!==id);db.clients=db.clients.filter(x=>x.id!==id);log('Client supprimé : '+nm)}
- else{const x=db[k].find(q=>q.id===id);if(!x||!confirm('Supprimer ce '+lib(k).toLowerCase()+' '+x.num+' ?'))return;db[k]=db[k].filter(q=>q.id!==id);log(`${lib(k)} supprimé : ${x.num} – ${gnf(x.montant)} – ${nomC(x.client)}`)}
+  const nm=nomC(id);db.cotis.filter(x=>x.client===id).forEach(x=>fbDel('cotis',x.id));db.retraits.filter(x=>x.client===id).forEach(x=>fbDel('retraits',x.id));fbDel('clients',id);db.cotis=db.cotis.filter(x=>x.client!==id);db.retraits=db.retraits.filter(x=>x.client!==id);db.clients=db.clients.filter(x=>x.id!==id);log('Client supprimé : '+nm)}
+ else{const x=db[k].find(q=>q.id===id);if(!x||!confirm('Supprimer ce '+lib(k).toLowerCase()+' '+x.num+' ?'))return;fbDel(k,id);db[k]=db[k].filter(q=>q.id!==id);log(`${lib(k)} supprimé : ${x.num} – ${gnf(x.montant)} – ${nomC(x.client)}`)}
  sauve();ferme();rendu();if(c)detail(c)}
 
 const LOGO=new Image();LOGO.src='logo.png';
@@ -222,20 +237,29 @@ function clic(e){
  const d=e.target.dataset;
  if(d.k){cur=d.k;rendu()}
  if(d.add)form(d.add);
+ if(d.edit){const[k,id,c]=d.edit.split('|');form(k,id,c)}
+ if(d.act==='fbout')deconnecte();
  if(d.det)detail(d.det);
  if(d.recu){const[k,id]=d.recu.split('|');recu(k,id)}
  if(d.del){const[k,id,c]=d.del.split('|');supprime(k,id,c)}
  if(d.fm)ferme();
- if(d.jdel&&confirm('Supprimer cette ligne du journal ?')){db.journal=db.journal.filter(x=>x.id!==d.jdel);sauve();rendu()}
+ if(d.act==='oubli'&&confirm('Cela efface TOUTES les données de ce téléphone (clients, versements, retraits) et le mot de passe. Avec la base en ligne, elles reviendront à la reconnexion ; sinon, restaurez votre sauvegarde. Continuer ?')&&confirm('Dernière confirmation : tout effacer ?')){try{localStorage.removeItem(CLE)}catch(x){}location.reload()}
+ if(d.jdel&&confirm('Supprimer cette ligne du journal ?')){fbDel('journal',d.jdel);db.journal=db.journal.filter(x=>x.id!==d.jdel);sauve();rendu()}
  if(d.act==='jdel'){const v=$('js').value;if(!v){alert('Choisissez ce que vous voulez supprimer.');return}
   const lim=Date.now()-Number(v)*864e5,del=db.journal.filter(x=>v==='all'||new Date(x.iso).getTime()<lim);
   if(!del.length){alert('Aucune ligne concernée.');return}
   if(!confirm('Supprimer '+del.length+' ligne(s) du journal ?'))return;
-  db.journal=db.journal.filter(x=>!del.includes(x));log('Journal nettoyé : '+del.length+' ligne(s) supprimée(s)');sauve();rendu()}
+  del.forEach(x=>fbDel('journal',x.id));db.journal=db.journal.filter(x=>!del.includes(x));log('Journal nettoyé : '+del.length+' ligne(s) supprimée(s)');sauve();rendu()}
  if(d.act==='x')exporte();
- if(d.act==='s'){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(db)],{type:'application/json'}));a.download='HAMAC_sauvegarde_'+auj()+'.json';a.click()}
- if(d.act==='r'){const i=document.createElement('input');i.type='file';i.accept='.json';i.onchange=()=>{const r=new FileReader();r.onload=()=>{try{const n=JSON.parse(r.result);if(confirm('Remplacer toutes les données actuelles par cette sauvegarde ?')){TAB.forEach(t=>db[t]=n[t]||[]);db.cpt={V:0,R:0,...(n.cpt||{})};db.params={...P(),...(n.params||{})};log('Restauration d’une sauvegarde');sauve();rendu()}}catch(x){alert('Fichier de sauvegarde invalide.')}};r.readAsText(i.files[0])};i.click()}
+ if(d.act==='s')sauvegarde();
+ if(d.act==='r'){const i=document.createElement('input');i.type='file';i.accept='.json';i.onchange=()=>{const r=new FileReader();r.onload=()=>{try{const n=JSON.parse(r.result);if(confirm('Remplacer toutes les données actuelles par cette sauvegarde ?')){const av={};TAB.forEach(t=>av[t]=db[t]);TAB.forEach(t=>db[t]=n[t]||[]);db.cpt={V:0,R:0,...(n.cpt||{})};db.params={...P(),...(n.params||{})};delete db.params.pin;log('Restauration d’une sauvegarde');sauve();rendu();pousse(av);fbMeta('params',P());fbMeta('cpt',db.cpt)}}catch(x){alert('Fichier de sauvegarde invalide.')}};r.readAsText(i.files[0])};i.click()}
+ if(d.act==='mdp')formMdp();
  if(d.act==='i'&&dip){dip.prompt();dip=null;e.target.hidden=true}}
+async function sauvegarde(){
+ const mark=()=>{db.sauv=new Date().toISOString();sauve();rendu()};
+ const nom='HAMAC_sauvegarde_'+auj()+'.json',b=new Blob([JSON.stringify({...db,auth:undefined})],{type:'application/json'}),f=new File([b],nom,{type:'application/json'});
+ if(navigator.canShare&&navigator.canShare({files:[f]})){try{await navigator.share({files:[f],title:nom});mark();return}catch(e){if(e.name==='AbortError')return}}
+ const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=nom;a.click();mark()}
 function exporte(){
  if(typeof XLSX==='undefined'){alert("L'export Excel demande une connexion internet. Utilisez la sauvegarde JSON.");return}
  const wb=XLSX.utils.book_new(),add=(n,r)=>XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(r.length?r:[{}]),n);
@@ -246,9 +270,81 @@ function exporte(){
  XLSX.writeFile(wb,'HAMAC_SERVICES_'+auj()+'.xlsx')}
 document.addEventListener('click',clic);
 addEventListener('beforeinstallprompt',e=>{e.preventDefault();dip=e;const b=$('bI');if(b)b.hidden=false});
+if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 rendu();
-if(P().pin){fenetre(`<form class="g"><h2>Code d'accès</h2><label>Code<input type="password" inputmode="numeric" id="pn"></label><div class="rang"><button class="btn">Ouvrir</button></div></form>`);$('pn').focus();$('m').querySelector('form').onsubmit=e=>{e.preventDefault();if($('pn').value===P().pin)ferme();else{alert('Code incorrect.');$('pn').value=''}}}
+const er=e=>{console.error(e);if(!erFait&&e&&e.code==='permission-denied'){erFait=true;alert('Accès refusé par la base en ligne : vérifiez les règles Firestore (voir le guide).')}};
+const col=k=>FS.collection('users/'+U+'/'+k);
+function fbSet(k,r){if(FS&&U)col(k).doc(r.id).set(nett(r)).catch(er)}
+function fbDel(k,id){if(FS&&U)col(k).doc(id).delete().catch(er)}
+function fbMeta(n,o){if(FS&&U)FS.doc('users/'+U+'/meta/'+n).set(nett(o),{merge:true}).catch(er)}
+async function pousse(av){
+ if(!FS||!U)return;const ops=[];
+ TAB.forEach(k=>{(av[k]||[]).forEach(x=>ops.push([k,x.id,null]));db[k].forEach(x=>ops.push([k,x.id,x]))});
+ try{for(let i=0;i<ops.length;i+=400){const b=FS.batch();ops.slice(i,i+400).forEach(([k,id,x])=>x?b.set(col(k).doc(id),nett(x)):b.delete(col(k).doc(id)));await b.commit()}}catch(e){er(e)}}
+const SDK='https://www.gstatic.com/firebasejs/10.12.5/';
+const charge=u=>new Promise((ok,ko)=>{const t=document.createElement('script');t.src=u;t.onload=ok;t.onerror=()=>ko(new Error('chargement '+u));document.head.appendChild(t)});
+let tmr;const planRendu=()=>{clearTimeout(tmr);tmr=setTimeout(()=>rendu(true),60)};
+async function lanceFb(){
+ try{
+  for(const f of ['app','auth','firestore'])await charge(SDK+'firebase-'+f+'-compat.js');
+  firebase.initializeApp(window.FIREBASE_CONFIG);AUTH=firebase.auth();const fs=firebase.firestore();
+  try{await fs.enablePersistence({synchronizeTabs:true})}catch(e){}
+  FS=fs;
+  AUTH.onAuthStateChanged(u=>{if(u){if(u.uid!==U)abonne(u.uid)}else{U=null;loginFb()}});
+ }catch(e){console.error(e);FS=null;rendu(true)}}
+function loginFb(){
+ document.body.classList.add('v');
+ const m=fenetre(`<form class="g"><h2>Connexion à la base en ligne</h2><p>Utilisez l'e-mail et le mot de passe créés dans Firebase.</p><label>E-mail<input type="email" id="le" autocomplete="username" required></label><label>Mot de passe<input type="password" id="lp" autocomplete="current-password" required></label><p id="lm" style="color:var(--rouge)"></p><div class="rang"><button class="btn">Se connecter</button></div></form>`);
+ $('le').focus();
+ m.querySelector('form').onsubmit=async e=>{e.preventDefault();$('lm').textContent='';
+  try{await AUTH.signInWithEmailAndPassword($('le').value.trim(),$('lp').value)}
+  catch(x){const c=x.code||'';$('lm').textContent=/invalid|wrong|user-not-found/.test(c)?'E-mail ou mot de passe incorrect.':c==='auth/network-request-failed'?'Pas de connexion internet.':c==='auth/too-many-requests'?'Trop d’essais. Réessayez plus tard.':'Connexion impossible ('+c+').'}}}
+async function abonne(uid){
+ U=uid;ferme();document.body.classList.remove('v');
+ const flag='hamac_fb_'+uid;
+ try{if(!localStorage.getItem(flag)){
+   localStorage.setItem(CLE+'_avant_en_ligne',localStorage.getItem(CLE)||'');
+   const n=db.clients.length+db.cotis.length+db.retraits.length;
+   if(n&&confirm('Envoyer les données de ce téléphone ('+db.clients.length+' client(s), '+(db.cotis.length+db.retraits.length)+' opération(s)) vers la base en ligne ?\n\nOK = oui, c’est la première fois.\nAnnuler = non, mes données sont déjà en ligne.')){await pousse({});fbMeta('params',P());fbMeta('cpt',db.cpt)}
+   localStorage.setItem(flag,'1')}}catch(e){er(e)}
+ ['clients','cotis','retraits','journal'].forEach(k=>col(k).onSnapshot(sn=>{if(sn.metadata.fromCache&&sn.empty&&db[k].length)return;db[k]=sn.docs.map(d=>({...d.data(),id:d.id}));sauve();planRendu()},er));
+ FS.doc('users/'+U+'/meta/params').onSnapshot(d=>{if(d.exists){db.params={...db.params,...d.data()};sauve();planRendu()}},er);
+ FS.doc('users/'+U+'/meta/cpt').onSnapshot(d=>{if(d.exists){const c=d.data();db.cpt.V=Math.max(db.cpt.V||0,c.V||0);db.cpt.R=Math.max(db.cpt.R||0,c.R||0);sauve()}},er);
+ rendu(true)}
+async function deconnecte(){
+ if(!confirm('Se déconnecter et effacer les copies de ce téléphone ? Vos données restent dans la base en ligne.'+(navigator.onLine?'':'\nAttention : vous êtes hors ligne, les dernières opérations non envoyées seraient perdues.')))return;
+ try{await AUTH.signOut();await FS.terminate();await FS.clearPersistence()}catch(e){console.error(e)}
+ try{localStorage.removeItem(CLE);localStorage.removeItem('hamac_fb_'+U);localStorage.removeItem(CLE+'_avant_en_ligne')}catch(e){}
+ location.reload()}
+function ouvert(){ferme();document.body.classList.remove('v');if(EN_LIGNE&&!AUTH)lanceFb()}
+addEventListener('online',()=>rendu(true));addEventListener('offline',()=>rendu(true));
+let essais=0,bloque=0,sorti=0;
+const b64=u=>btoa(String.fromCharCode(...new Uint8Array(u))),ub=t=>Uint8Array.from(atob(t),c=>c.charCodeAt(0));
+async function hache(mdp,sel){const k=await crypto.subtle.importKey('raw',new TextEncoder().encode(mdp),'PBKDF2',false,['deriveBits']);return b64(await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:sel,iterations:150000},k,256))}
+async function creeMdp(mdp){const sel=crypto.getRandomValues(new Uint8Array(16));db.auth={s:b64(sel),h:await hache(mdp,sel)};sauve()}
+async function verifMdp(mdp){return db.auth&&await hache(mdp,ub(db.auth.s))===db.auth.h}
+function verrou(){
+ document.body.classList.add('v');
+ if(!db.auth){
+  const m=fenetre(`<form class="g"><h2>Créer votre mot de passe</h2><p>Il sera demandé à chaque ouverture de l'application. Notez-le bien : en cas d'oubli, les données de ce téléphone devront être effacées (puis restaurées depuis une sauvegarde).</p><label>Mot de passe (6 caractères minimum)<input type="password" id="p1" autocomplete="new-password" required></label><label>Confirmer le mot de passe<input type="password" id="p2" autocomplete="new-password" required></label><div class="rang"><button class="btn">Enregistrer</button></div></form>`);
+  $('p1').focus();
+  m.querySelector('form').onsubmit=async e=>{e.preventDefault();if($('p1').value.length<6||$('p1').value!==$('p2').value){alert('Les deux mots de passe doivent être identiques (6 caractères minimum).');return}
+   await creeMdp($('p1').value);log('Mot de passe créé');sauve();ouvert()};
+ }else{
+  const m=fenetre(`<form class="g"><h2>Mot de passe</h2><label>Entrez votre mot de passe<input type="password" id="pw" autocomplete="current-password" required></label><div class="rang"><button type="button" class="btn s" data-act="oubli">Mot de passe oublié ?</button><button class="btn">Ouvrir</button></div></form>`);
+  $('pw').focus();
+  m.querySelector('form').onsubmit=async e=>{e.preventDefault();if(Date.now()<bloque){alert('Trop d’essais. Réessayez dans 30 secondes.');return}
+   if(await verifMdp($('pw').value)){essais=0;ouvert()}else{if(++essais>=5){bloque=Date.now()+30000;essais=0}alert('Mot de passe incorrect.');$('pw').value=''}};
+ }}
+function formMdp(){
+ fenetre(`<form id="fm2"><h2>Changer le mot de passe</h2><label>Mot de passe actuel<input type="password" id="a0" autocomplete="current-password" required></label><label>Nouveau mot de passe (6 caractères minimum)<input type="password" id="a1" autocomplete="new-password" required></label><label>Confirmer le nouveau mot de passe<input type="password" id="a2" autocomplete="new-password" required></label><div class="rang"><button type="button" class="btn s" data-fm="1">Annuler</button><button class="btn">Enregistrer</button></div></form>`);
+ $('a0').focus();
+ $('fm2').onsubmit=async e=>{e.preventDefault();if(!await verifMdp($('a0').value)){alert('Mot de passe actuel incorrect.');return}
+  if($('a1').value.length<6||$('a1').value!==$('a2').value){alert('Les deux nouveaux mots de passe doivent être identiques (6 caractères minimum).');return}
+  await creeMdp($('a1').value);log('Mot de passe modifié');sauve();ferme();alert('Mot de passe modifié.')}}
+document.addEventListener('visibilitychange',()=>{if(document.hidden)sorti=Date.now();else if(sorti&&Date.now()-sorti>3e5&&db.auth&&!document.body.classList.contains('v'))verrou()});
+if(window.crypto&&crypto.subtle)verrou();else ouvert();
 </script>
 </body>
 </html>
